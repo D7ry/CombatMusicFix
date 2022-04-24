@@ -1,3 +1,76 @@
+inline void sendConsoleCommand(std::string a_command)
+{
+	const auto scriptFactory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::Script>();
+	const auto script = scriptFactory ? scriptFactory->Create() : nullptr;
+	if (script) {
+		const auto selectedRef = RE::Console::GetSelectedRef();
+		script->SetCommand(a_command);
+		script->CompileAndRun(selectedRef.get());
+		delete script;
+	}
+}
+
+class CombatMusicFix {
+private:
+	static inline const std::string stopCombatMusic = "removemusic MUScombat";
+public:
+	static void fix() {
+		sendConsoleCommand(stopCombatMusic);
+	}
+
+};
+class CombatEventHandler : public RE::BSTEventSink<RE::TESCombatEvent>
+{
+public:
+	using EventResult = RE::BSEventNotifyControl;
+
+	virtual EventResult ProcessEvent(const RE::TESCombatEvent* a_event, RE::BSTEventSource<RE::TESCombatEvent>* a_eventSource) {
+		if (a_event->actor && a_event->actor->IsPlayerRef()) {
+			if (a_event->newState == RE::ACTOR_COMBAT_STATE::kNone) {
+				CombatMusicFix::fix();
+				RE::ConsoleLog::GetSingleton()->Print("Combat music fixed");
+			}
+		}
+		return EventResult::kContinue;
+	}
+
+
+	static bool Register()
+	{
+		
+
+		static CombatEventHandler singleton;
+		INFO("Registering {}...", typeid(singleton).name());
+		auto ScriptEventSource = RE::ScriptEventSourceHolder::GetSingleton();
+		
+		if (!ScriptEventSource) {
+			ERROR("Script event source not found");
+			return false;
+		}
+
+		ScriptEventSource->AddEventSink(&singleton);
+
+		INFO("..done");
+
+		return true;
+	}
+
+};
+
+
+
+void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
+{
+	switch (a_msg->type) {
+	case SKSE::MessagingInterface::kDataLoaded:
+		INFO("Data Loaded");
+		CombatEventHandler::Register();
+	case SKSE::MessagingInterface::kPostLoadGame:
+		CombatMusicFix::fix();
+		break;
+	}
+}
+
 #if ANNIVERSARY_EDITION
 
 extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []()
@@ -57,6 +130,9 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 	INFO("{} v{} loaded", Version::PROJECT, Version::NAME);
 
 	SKSE::Init(a_skse);
-
+	auto messaging = SKSE::GetMessagingInterface();
+	if (!messaging->RegisterListener("SKSE", MessageHandler)) {
+		return false;
+	}
 	return true;
 }
