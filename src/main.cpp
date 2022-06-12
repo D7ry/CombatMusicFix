@@ -15,7 +15,12 @@ private:
 	static inline const std::string stopCombatMusic = "removemusic MUScombat";
 public:
 	static void fix() {
-		sendConsoleCommand(stopCombatMusic);
+		auto asyncFunc = []() {
+			std::this_thread::sleep_for(std::chrono::seconds(5));
+			sendConsoleCommand(stopCombatMusic);
+		};
+		std::jthread t(asyncFunc);
+		t.detach();
 	}
 
 };
@@ -28,7 +33,6 @@ public:
 		if (a_event->actor && a_event->actor->IsPlayerRef()) {
 			if (a_event->newState == RE::ACTOR_COMBAT_STATE::kNone) {
 				CombatMusicFix::fix();
-				RE::ConsoleLog::GetSingleton()->Print("Combat music fixed");
 			}
 		}
 		return EventResult::kContinue;
@@ -66,7 +70,10 @@ void MessageHandler(SKSE::MessagingInterface::Message* a_msg)
 		INFO("Data Loaded");
 		CombatEventHandler::Register();
 	case SKSE::MessagingInterface::kPostLoadGame:
-		CombatMusicFix::fix();
+		auto pc = RE::PlayerCharacter::GetSingleton();
+		if (pc && !pc->IsInCombat()) {
+			CombatMusicFix::fix();
+		}
 		break;
 	}
 }
